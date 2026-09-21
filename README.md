@@ -58,7 +58,9 @@ TO-DO Panel 是一个常驻 macOS / Windows 屏幕顶部的本地工作台。Mac
 
 ## 下载与安装
 
-> 当前稳定版本：**1.2.0** · **macOS 13.0+ Apple Silicon** / **Windows 10/11 x64（Intel / AMD 64 位）**
+> 当前稳定版本：**1.2.0** · **macOS 13.0+ · Apple Silicon（M 系列）** / **Windows 10/11 x64（Intel / AMD 64 位）**
+>
+> macOS 安装包是 arm64 单架构，**Intel 芯片的 Mac 不支持**（Rosetta 只能让 Intel 程序跑在 M 系列上，反过来不行）；标着「Intel」的那一行是 Windows 版。
 
 | 平台 | 在上方 GitHub Releases 下载对应安装包 |
 | --- | --- |
@@ -66,6 +68,8 @@ TO-DO Panel 是一个常驻 macOS / Windows 屏幕顶部的本地工作台。Mac
 | Windows | [TO-DO-Panel-1.2.0-windows-x64-setup.exe](https://github.com/moronfranklyn-lab/panel-xiaobei/releases/download/v1.2.0/TO-DO-Panel-1.2.0-windows-x64-setup.exe) |
 
 ### macOS
+
+> 需要 Apple Silicon（M1 及以后）。Intel 机型请用 Windows 版或从源码运行。
 
 1. 前往 [GitHub Releases](https://github.com/moronfranklyn-lab/panel-xiaobei/releases/latest) 下载 `TO-DO-Panel-*-arm64.dmg`。
 2. 打开 DMG，将 `TO-DO Panel.app` 拖入「应用程序」。
