@@ -169,7 +169,7 @@ test('screen recording permission is requested on demand instead of at startup',
 
   // 启动自检不得再碰屏幕录制：macOS 只有在应用真正发起过一次捕获后才会登记，
   // 启动时把用户指向系统设置是死胡同（列表里没有条目）。
-  const startupPrompt = mainJs.match(/async function promptForMissingPermissions\(\)[\s\S]*?\n}\n/)?.[0] || '';
+  const startupPrompt = mainJs.match(/async function promptForMissingPermissions\(\)[\s\S]*?\r?\n}\r?\n/)?.[0] || '';
   assert.ok(startupPrompt, 'promptForMissingPermissions 必须存在');
   // 只看代码本身：注释里会解释「为什么不在这里提示屏幕录制」，不应算作用户可见文案。
   const startupCode = startupPrompt.replace(/\/\/[^\n]*/g, '');
@@ -193,7 +193,7 @@ test('pet renders the Xiaobei sprite library with a priority-based animation pla
   assert.match(petJs, /const PET_ANIMS = \{/);
 
   // 动画映射表里声明的每一帧都必须真实存在于素材库
-  const block = petJs.match(/const PET_ANIMS = \{[\s\S]*?\n\};/)?.[0] || '';
+  const block = petJs.match(/const PET_ANIMS = \{[\s\S]*?\r?\n\};/)?.[0] || '';
   const entries = [...block.matchAll(/dir: '(\w+)',\s+prefix: '([\w-]+)',\s+frames: (\d+)/g)];
   assert.ok(entries.length >= 9, '至少映射 9 组动画');
   for (const [, dir, prefix, frames] of entries) {
