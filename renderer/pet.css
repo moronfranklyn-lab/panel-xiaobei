@@ -1,0 +1,705 @@
+:root {
+  color-scheme: dark;
+
+  /* ============ 主题色板（classic 兜底；照片主题由 pet.js 覆写这组变量） ============ */
+  --palette-bg: #000000;
+  --palette-surface: #191919;
+  --palette-surface-2: #252525;
+  --palette-surface-3: #303030;
+  --palette-text: #f5f5f5;
+  --palette-text-soft: #a1a1a1;
+  --palette-hairline: rgba(255, 255, 255, 0.14);
+  --palette-accent: #30d978;
+  --palette-accent-soft: rgba(48, 217, 120, 0.24);
+
+  /* ============ UI 配色：由色板派生，classic 为经典黑兜底 ============ */
+  /* 精灵本体色固定在 pixel-pet.js（角色身份色），这里只管气泡等 UI。 */
+  /* 先给纯色兜底（不支持 color-mix 的引擎也能正确显色），下一组用 color-mix 覆写 */
+  --pet-glow: var(--palette-hairline);
+  --pet-bubble-bg: var(--palette-surface);
+  --pet-field-bg: var(--palette-surface-2);
+  --pet-focus-ring: var(--palette-accent);
+  --pet-shadow: rgba(0, 0, 0, 0.32);
+
+  /* 脸部件掺入深墨，保证浅色照片主题下眼睛/嘴仍然可读（深色主题下仍有对比） */
+  --pet-glow: color-mix(in srgb, var(--palette-accent) 30%, transparent);
+  --pet-bubble-bg: color-mix(in srgb, var(--palette-surface) 92%, #000000);
+  --pet-bubble-text: var(--palette-text);
+  --pet-bubble-soft: var(--palette-text-soft);
+  --pet-bubble-border: var(--palette-hairline);
+  --pet-bubble-shadow: rgba(0, 0, 0, 0.52);
+  --pet-toast-accent: var(--palette-accent);
+  --pet-field-bg: color-mix(in srgb, var(--palette-bg) 70%, var(--palette-surface-2));
+  --pet-field-border: var(--palette-hairline);
+  --pet-focus-ring: color-mix(in srgb, var(--palette-accent) 62%, #ffffff);
+
+  /* ============ 尺寸：small / medium / large 三档（64 / 96 / 128 px） ============
+     素材是 256x256 平滑插画，三档分别约 1/4、3/8、1/2 缩放。 */
+  --pet-size: 96px;
+  --pet-sprite-size: 100%;
+  --pet-turn-duration: 260ms;
+  --pet-margin-bottom: 8%;
+  --pet-safe-margin: 8%;
+
+  --pet-bubble-width: 258px;
+  --pet-bubble-min-height: 58px;
+  --pet-bubble-gap: 12px;
+  --pet-toast-gap: 20px;
+  --pet-bubble-radius: 16px;
+  --pet-bubble-padding-block: 10px;
+  --pet-bubble-padding-inline: 12px;
+  --pet-bubble-row-gap: 7px;
+  --pet-bubble-offset: 14px;
+  --pet-toast-width: 236px;
+  --pet-toast-radius: 14px;
+  --pet-toast-padding-block: 9px;
+  --pet-toast-padding-inline: 11px;
+  --pet-toast-column-gap: 9px;
+
+  /* ============ 字体 ============ */
+  --pet-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  --pet-fs-body: 13px;
+  --pet-fs-small: 11.5px;
+  --pet-fs-micro: 10.5px;
+  --pet-lh-body: 19px;
+  --pet-lh-small: 17px;
+  --pet-weight-strong: 600;
+  --pet-weight-soft: 500;
+
+  /* ============ 间距与圆角 ============ */
+  --pet-s-1: 4px;
+  --pet-s-2: 6px;
+  --pet-s-3: 8px;
+  --pet-s-4: 10px;
+  --pet-s-5: 12px;
+  --pet-hairline-w: 1px;
+  --pet-r-pill: 999px;
+  --pet-r-field: 10px;
+  --pet-icon-size: 15px;
+  --pet-send-size: 26px;
+  --pet-glyph-size: 14px;
+  --pet-glyph-box: 24px;
+  --pet-arrow-size: 11px;
+
+  /* ============ 透明度与动效时长 ============ */
+  --pet-opacity-idle: 0.96;
+  --pet-opacity-muted: 0.72;
+  --pet-opacity-dim: 0.5;
+  --pet-breath-duration: 3400ms;
+  --pet-idle-rise: -3px;
+  --pet-enter-duration: 320ms;
+  --pet-bubble-duration: 180ms;
+  --pet-typing-ms: 26ms;
+  --pet-toast-duration: 4600ms;
+  --pet-event-task-duration: 1400ms;
+  --pet-event-pomodoro-duration: 1700ms;
+  --pet-event-todo-duration: 800ms;
+  --pet-ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --pet-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --pet-ease-spring: cubic-bezier(0.34, 1.2, 0.4, 1);
+}
+
+/* 尺寸档位：只改一个 --pet-size，其余布局全部相对派生 */
+.pet-root[data-size='small'] {
+  --pet-size: 64px;
+  --pet-bubble-width: 224px;
+  --pet-toast-width: 208px;
+  --pet-bubble-gap: 10px;
+}
+
+.pet-root[data-size='medium'] {
+  --pet-size: 96px;
+}
+
+.pet-root[data-size='large'] {
+  --pet-size: 128px;
+  --pet-bubble-width: 280px;
+  --pet-toast-width: 252px;
+  --pet-bubble-gap: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  color: var(--pet-bubble-text);
+  font-family: var(--pet-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+/* ============ 覆盖层：整屏透明，默认不吃鼠标 ============ */
+.pet-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--pet-enter-duration) var(--pet-ease-out);
+}
+
+.pet-root.is-ready {
+  opacity: 1;
+}
+
+.pet-stage {
+  position: absolute;
+  /* 宠物锚在窗口底部居中：窗口就是宠物本身，移动窗口 = 移动宠物。
+     用 margin-left 做居中（而不是 transform），把 transform 留给朝向翻转。 */
+  bottom: 12px;
+  left: 50%;
+  margin-left: calc(var(--pet-size) / -2);
+  width: var(--pet-size);
+  height: var(--pet-size);
+  will-change: transform;
+}
+
+.pet-stage[data-dragging='true'] .pet-body {
+  cursor: grabbing;
+}
+
+.pet-stage[data-dragging='true'] .pet-sprite {
+  animation: none;
+}
+
+.pet-stage[data-frozen='true'],
+.pet-stage[data-state='idle'],
+.pet-stage[data-state='rest'] {
+  transition: transform var(--pet-bubble-duration) var(--pet-ease);
+}
+
+/* 必须排在 idle/rest 过渡之后：同特异性下后写的生效，否则拖拽仍会缓动 */
+.pet-stage[data-dragging='true'] {
+  transition: none;
+}
+
+.pet-body {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--palette-text);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  opacity: var(--pet-opacity-idle);
+  transition: opacity var(--pet-bubble-duration) var(--pet-ease);
+  will-change: transform, opacity;
+}
+
+.pet-body:focus-visible {
+  outline: var(--pet-hairline-w) solid var(--pet-focus-ring);
+  outline-offset: 4px;
+  border-radius: var(--pet-r-pill);
+}
+
+.pet-sprite {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: var(--pet-sprite-size);
+  height: var(--pet-sprite-size);
+  overflow: visible;
+  /* 平滑插画：软投影落地，缩放不做像素化 */
+  filter: drop-shadow(0 10px 16px var(--pet-shadow));
+  transform-origin: 50% 92%;
+  animation: pet-breathe var(--pet-breath-duration) var(--pet-ease) infinite;
+  will-change: transform;
+}
+
+.pet-sprite-current,
+.pet-sprite-ghost {
+  transition: opacity var(--pet-bubble-duration) var(--pet-ease);
+}
+
+.pet-sprite-current {
+  opacity: 1;
+}
+
+.pet-sprite-ghost {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ============ 状态机：idle / walk / rest ============ */
+.pet-stage[data-state='walk'] .pet-sprite {
+  /* Walk 帧自身包含四足承重变化；额外弹跳会破坏脚掌的着地感。 */
+  animation: none;
+}
+
+.pet-stage[data-state='turn'] .pet-sprite {
+  animation: pet-turn var(--pet-turn-duration) var(--pet-ease) both;
+}
+
+.pet-stage[data-state='rest'] .pet-sprite {
+  animation: pet-rest-settle 2600ms var(--pet-ease) infinite;
+}
+
+.pet-stage[data-state='rest'] .pet-body {
+  opacity: var(--pet-opacity-muted);
+}
+
+/* 事件动作：叠加在基础状态之上，动作结束由 pet.js 摘掉类名 */
+.pet-body[data-action='cheer'] {
+  animation: pet-cheer var(--pet-event-task-duration) var(--pet-ease-out);
+}
+
+.pet-body[data-action='celebrate'] {
+  animation: pet-celebrate var(--pet-event-pomodoro-duration) var(--pet-ease-out);
+}
+
+.pet-body[data-action='shake'] {
+  animation: pet-shake var(--pet-event-todo-duration) var(--pet-ease);
+}
+
+/* ============ 气泡 / 提示卡公共外观 ============ */
+.pet-bubble,
+.pet-toast {
+  /* 必须是 absolute：pet.js 的 placeAnchored() 用 left + bottom 定位，
+     bottom 相对铺满视口的气泡层底边计算。写成 relative 时 bottom 只会把元素
+     从层顶部再往上推，气泡会整块跑到屏幕外。 */
+  position: absolute;
+  max-width: calc(100vw - 24px);
+  border: var(--pet-hairline-w) solid var(--pet-bubble-border);
+  background: var(--pet-bubble-bg);
+  color: var(--pet-bubble-text);
+  box-shadow: 0 16px 40px var(--pet-bubble-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  transform-origin: 50% 100%;
+  animation: pet-pop var(--pet-bubble-duration) var(--pet-ease-spring);
+}
+
+.pet-bubble {
+  width: var(--pet-bubble-width);
+  border-radius: var(--pet-bubble-radius);
+}
+
+.pet-toast {
+  width: var(--pet-toast-width);
+  border-radius: var(--pet-toast-radius);
+}
+
+.pet-bubble.is-leaving,
+.pet-toast.is-leaving {
+  animation: pet-pop-out var(--pet-bubble-duration) var(--pet-ease) forwards;
+}
+
+.pet-bubble-arrow,
+.pet-toast-arrow {
+  position: absolute;
+  bottom: calc(var(--pet-arrow-size) / -2);
+  left: var(--pet-arrow-left, 50%);
+  width: var(--pet-arrow-size);
+  height: var(--pet-arrow-size);
+  border-right: var(--pet-hairline-w) solid var(--pet-bubble-border);
+  border-bottom: var(--pet-hairline-w) solid var(--pet-bubble-border);
+  background: var(--pet-bubble-bg);
+  transform: translateX(-50%) rotate(45deg);
+  border-bottom-right-radius: 2px;
+}
+
+.pet-bubble[data-side='left'] .pet-bubble-arrow,
+.pet-toast[data-side='left'] .pet-toast-arrow {
+  left: auto;
+  right: var(--pet-arrow-right, 16px);
+  transform: rotate(45deg);
+}
+
+/* ============ 气泡 ============ */
+.pet-bubble-layer,
+.pet-toast-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pet-bubble-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pet-bubble-row-gap);
+  min-height: var(--pet-bubble-min-height);
+  padding: var(--pet-bubble-padding-block) var(--pet-bubble-padding-inline);
+}
+
+.pet-bubble-label {
+  margin: 0;
+  color: var(--pet-bubble-soft);
+  font-size: var(--pet-fs-micro);
+  font-weight: var(--pet-weight-soft);
+  line-height: var(--pet-lh-small);
+}
+
+.pet-bubble-label:empty {
+  display: none;
+}
+
+.pet-bubble-text {
+  margin: 0;
+  color: var(--pet-bubble-text);
+  font-size: var(--pet-fs-body);
+  line-height: var(--pet-lh-body);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+  /* 长回复在气泡内滚动：窗口按需加高，必须有上限才不会被撑到屏幕外 */
+  max-height: calc(var(--pet-lh-body) * 7);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pet-bubble[data-mode='error'] .pet-bubble-text {
+  color: var(--pet-toast-accent);
+}
+
+.pet-bubble-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pet-s-2);
+}
+
+.pet-bubble-form {
+  display: flex;
+  align-items: center;
+  gap: var(--pet-s-2);
+}
+
+.pet-bubble-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--pet-s-4);
+  border: var(--pet-hairline-w) solid var(--pet-field-border);
+  border-radius: var(--pet-r-field);
+  background: var(--pet-field-bg);
+  color: var(--pet-bubble-text);
+  font-family: inherit;
+  font-size: var(--pet-fs-body);
+  line-height: 26px;
+  appearance: none;
+  -webkit-appearance: none;
+  user-select: text;
+  -webkit-user-select: text;
+  transition:
+    border-color var(--pet-bubble-duration) var(--pet-ease),
+    box-shadow var(--pet-bubble-duration) var(--pet-ease);
+}
+
+.pet-bubble-input::placeholder {
+  color: var(--pet-bubble-soft);
+}
+
+.pet-bubble-input:focus {
+  outline: none;
+  border-color: var(--pet-focus-ring);
+  box-shadow: 0 0 0 3px var(--pet-glow);
+}
+
+.pet-bubble-btn,
+.pet-bubble-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: var(--pet-hairline-w) solid var(--pet-field-border);
+  border-radius: var(--pet-r-field);
+  background: var(--pet-field-bg);
+  color: var(--pet-bubble-text);
+  font-family: inherit;
+  font-size: var(--pet-fs-small);
+  font-weight: var(--pet-weight-soft);
+  cursor: pointer;
+  transition:
+    background-color var(--pet-bubble-duration) var(--pet-ease),
+    border-color var(--pet-bubble-duration) var(--pet-ease),
+    opacity var(--pet-bubble-duration) var(--pet-ease);
+}
+
+.pet-bubble-btn {
+  gap: var(--pet-s-2);
+  height: 26px;
+  padding: 0 var(--pet-s-4);
+}
+
+.pet-bubble-send {
+  width: var(--pet-send-size);
+  height: var(--pet-send-size);
+  flex: none;
+  padding: 0;
+  border-radius: var(--pet-r-pill);
+  background: var(--pet-bubble-border);
+}
+
+.pet-bubble-btn:hover,
+.pet-bubble-send:hover {
+  border-color: var(--pet-focus-ring);
+}
+
+.pet-bubble-send:focus-visible,
+.pet-bubble-btn:focus-visible {
+  outline: none;
+  border-color: var(--pet-focus-ring);
+  box-shadow: 0 0 0 3px var(--pet-glow);
+}
+
+.pet-bubble.is-busy .pet-bubble-send,
+.pet-bubble.is-busy .pet-bubble-form {
+  opacity: var(--pet-opacity-dim);
+  pointer-events: none;
+}
+
+.pet-icon {
+  width: var(--pet-icon-size);
+  height: var(--pet-icon-size);
+  flex: none;
+  color: currentColor;
+}
+
+/* ============ 事件提示卡（非输入态） ============ */
+.pet-toast-inner {
+  display: grid;
+  grid-template-columns: var(--pet-glyph-box) minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--pet-toast-column-gap);
+  padding: var(--pet-toast-padding-block) var(--pet-toast-padding-inline);
+}
+
+.pet-toast-glyph {
+  display: grid;
+  place-items: center;
+  width: var(--pet-glyph-box);
+  height: var(--pet-glyph-box);
+  border-radius: var(--pet-r-field);
+  background: var(--pet-glow);
+  color: var(--pet-toast-accent);
+}
+
+.pet-toast-glyph .pet-icon {
+  grid-area: 1 / 1;
+  width: var(--pet-glyph-size);
+  height: var(--pet-glyph-size);
+  opacity: 0;
+  transform: scale(0.72);
+  transition:
+    opacity var(--pet-bubble-duration) var(--pet-ease-out),
+    transform var(--pet-bubble-duration) var(--pet-ease-out);
+}
+
+.pet-toast[data-kind='task'] .pet-toast-glyph .pet-icon:nth-child(1),
+.pet-toast[data-kind='pomodoro'] .pet-toast-glyph .pet-icon:nth-child(2),
+.pet-toast[data-kind='todo'] .pet-toast-glyph .pet-icon:nth-child(3) {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.pet-toast-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pet-toast-title,
+.pet-toast-body {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pet-toast-title {
+  color: var(--pet-bubble-text);
+  font-size: var(--pet-fs-small);
+  font-weight: var(--pet-weight-strong);
+  line-height: var(--pet-lh-small);
+  white-space: nowrap;
+}
+
+.pet-toast-body {
+  color: var(--pet-bubble-soft);
+  font-size: var(--pet-fs-micro);
+  line-height: var(--pet-lh-small);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pet-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============ 关键帧 ============ */
+@keyframes pet-turn {
+  0%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  45%,
+  55% {
+    transform: translateY(2px) scale(0.82, 0.96);
+  }
+}
+
+@keyframes pet-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(var(--pet-idle-rise)) scale(1.014);
+  }
+}
+
+@keyframes pet-rest-settle {
+  0%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  50% {
+    transform: translateY(2px) scale(1.02, 0.975);
+  }
+}
+
+@keyframes pet-cheer {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  18% {
+    transform: translateY(-16px) scale(1.05, 0.96);
+  }
+  38% {
+    transform: translateY(0) scale(0.97, 1.03);
+  }
+  56% {
+    transform: translateY(-9px) scale(1.03, 0.98);
+  }
+  76% {
+    transform: translateY(0) scale(0.99, 1.01);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pet-celebrate {
+  0% {
+    transform: translateY(0) rotate(0) scale(1);
+  }
+  16% {
+    transform: translateY(-14px) rotate(-7deg) scale(1.04);
+  }
+  34% {
+    transform: translateY(0) rotate(6deg) scale(0.98);
+  }
+  52% {
+    transform: translateY(-10px) rotate(-5deg) scale(1.03);
+  }
+  72% {
+    transform: translateY(0) rotate(3deg) scale(0.99);
+  }
+  100% {
+    transform: translateY(0) rotate(0) scale(1);
+  }
+}
+
+@keyframes pet-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(-5px);
+  }
+  35% {
+    transform: translateX(5px);
+  }
+  55% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes pet-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pet-pop-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.94);
+  }
+}
+
+/* ============ 降级：完全静态，仅保留交互 ============ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pet-breath-duration: 1ms;
+    --pet-turn-duration: 1ms;
+    --pet-enter-duration: 1ms;
+    --pet-bubble-duration: 1ms;
+    --pet-event-task-duration: 1ms;
+    --pet-event-pomodoro-duration: 1ms;
+    --pet-event-todo-duration: 1ms;
+    --pet-typing-ms: 1ms;
+  }
+
+  .pet-sprite,
+  .pet-body {
+    animation: none !important;
+  }
+
+  .pet-sprite-current,
+  .pet-sprite-ghost {
+    transition: none;
+  }
+
+  .pet-bubble,
+  .pet-toast {
+    animation: none;
+  }
+}

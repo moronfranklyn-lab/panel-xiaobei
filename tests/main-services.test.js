@@ -1,0 +1,805 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const {
+  isPrivateAddress,
+  extractPageTitle,
+  extractFaviconHref,
+  recordingExtension,
+  normalizeWindowRows,
+  todoReminderState,
+  todoReminderTimerDelay,
+  taskNotificationIdentity,
+  normalizeCredentialInput,
+  parseSmartLinkMetadata,
+  parseSmartMaterialMetadata,
+  clipboardServicePolicy,
+  createClipboardImageFingerprint,
+  installLocalWebContentsGuards,
+  runOwnedOpenDialog,
+  readClipboardObservation,
+  screenRecordingProbePolicy,
+  taskNotificationWindowPolicy,
+  prepareClipboardImagePayload,
+  updateFeaturePreference,
+  normalizeDefaultTabPreference,
+  updateDefaultTabPreference,
+  controlMusicApp,
+  musicShortcutSpec,
+  selectTranscriptionSettings,
+  createWorkspacePersistenceGate,
+  hoverSpacePollingPolicy,
+  reduceClipboardObservation,
+  createForegroundMediaPermissionCoordinator,
+  normalizeThemePreference,
+  normalizeThemePalette,
+  normalizeThemeSettings,
+  normalizePetSettings,
+  normalizePetMotion,
+  truncatePetMemory,
+  appendPetConversation,
+  buildPetChatMessages,
+} = require('../main-services');
+
+test('media permission prompts temporarily leave the screen-saver window layer', async () => {
+  const events = [];
+  let alwaysOnTop = true;
+  const owner = {
+    isDestroyed: () => false,
+    isVisible: () => true,
+    isAlwaysOnTop: () => alwaysOnTop,
+    setAlwaysOnTop(value, level) {
+      alwaysOnTop = value;
+      events.push(['top', value, level]);
+    },
+    focus: () => events.push(['focus']),
+  };
+
+  const coordinator = createForegroundMediaPermissionCoordinator({
+    activate: () => events.push(['activate']),
+    track: (delta) => events.push(['track', delta]),
+  });
+  const granted = await coordinator.run({
+    owner,
+    request: async () => {
+      events.push(['request', alwaysOnTop]);
+      return true;
+    },
+  });
+
+  assert.equal(granted, true);
+  assert.equal(alwaysOnTop, true);
+  assert.deepEqual(events, [
+    ['track', 1],
+    ['top', false, undefined],
+    ['activate'],
+    ['focus'],
+    ['request', false],
+    ['top', true, 'screen-saver'],
+    ['track', -1],
+  ]);
+});
+
+test('media permission prompts restore the window layer when the system request fails', async () => {
+  let alwaysOnTop = true;
+  const deltas = [];
+  const owner = {
+    isDestroyed: () => false,
+    isVisible: () => true,
+    isAlwaysOnTop: () => alwaysOnTop,
+    setAlwaysOnTop(value) { alwaysOnTop = value; },
+    focus() {},
+  };
+
+  const coordinator = createForegroundMediaPermissionCoordinator({
+    activate() {},
+    track: (delta) => deltas.push(delta),
+  });
+  await assert.rejects(() => coordinator.run({
+    owner,
+    request: async () => { throw new Error('permission service failed'); },
+  }), /permission service failed/);
+
+  assert.equal(alwaysOnTop, true);
+  assert.deepEqual(deltas, [1, -1]);
+});
+
+test('overlapping media prompts stay below system UI until every request settles', async () => {
+  let alwaysOnTop = true;
+  const deltas = [];
+  const releases = [];
+  const owner = {
+    isDestroyed: () => false,
+    isAlwaysOnTop: () => alwaysOnTop,
+    setAlwaysOnTop(value) { alwaysOnTop = value; },
+    focus() {},
+  };
+  const coordinator = createForegroundMediaPermissionCoordinator({
+    activate() {},
+    track: (delta) => deltas.push(delta),
+  });
+  const request = () => new Promise((resolve) => releases.push(resolve));
+
+  const camera = coordinator.run({ owner, request });
+  const microphone = coordinator.run({ owner, request });
+  assert.equal(alwaysOnTop, false);
+  assert.deepEqual(deltas, [1, 1]);
+
+  releases[0](true);
+  assert.equal(await camera, true);
+  assert.equal(alwaysOnTop, false, 'the second system prompt is still awaiting a decision');
+  assert.deepEqual(deltas, [1, 1, -1]);
+
+  releases[1](false);
+  assert.equal(await microphone, false);
+  assert.equal(alwaysOnTop, true);
+  assert.deepEqual(deltas, [1, 1, -1, -1]);
+});
+
+test('a failed window-layer restore still releases the media interaction guard', async () => {
+  const deltas = [];
+  const owner = {
+    isDestroyed: () => false,
+    isAlwaysOnTop: () => true,
+    setAlwaysOnTop(value) {
+      if (value) throw new Error('restore failed');
+    },
+    focus() {},
+  };
+  const coordinator = createForegroundMediaPermissionCoordinator({
+    activate() {},
+    track: (delta) => deltas.push(delta),
+  });
+
+  await assert.rejects(() => coordinator.run({
+    owner,
+    request: async () => true,
+  }), /restore failed/);
+  assert.deepEqual(deltas, [1, -1]);
+});
+
+test('portable workspace persistence skips unchanged snapshots regardless of key order', () => {
+  const gate = createWorkspacePersistenceGate();
+  assert.equal(gate.shouldWrite({ todo: 'one', notes: 'two' }), true);
+  assert.equal(gate.shouldWrite({ notes: 'two', todo: 'one' }), true, '写入确认前必须允许重试');
+  gate.markWritten({ todo: 'one', notes: 'two' });
+  assert.equal(gate.shouldWrite({ notes: 'two', todo: 'one' }), false);
+  assert.equal(gate.shouldWrite({ notes: 'updated', todo: 'one' }), true);
+  gate.markWritten({ notes: 'updated', todo: 'one' });
+  assert.equal(gate.shouldWrite({ notes: 'updated', todo: 'one' }), false);
+  assert.equal(gate.shouldWrite({ notes: 'updated', todo: 'one' }, '/another/workspace'), true);
+});
+
+test('Hover + Space polls only while the collapsed strip is visible', () => {
+  assert.deepEqual(hoverSpacePollingPolicy({ shortcut: 'Space', visible: true, mode: 'collapsed' }), {
+    enabled: true,
+    intervalMs: 60,
+  });
+  assert.equal(hoverSpacePollingPolicy({ shortcut: 'Space', visible: true, mode: 'expanded' }).enabled, false);
+  assert.equal(hoverSpacePollingPolicy({ shortcut: 'Space', visible: false, mode: 'collapsed' }).enabled, false);
+  assert.equal(hoverSpacePollingPolicy({ shortcut: 'Command+Shift+P', visible: true, mode: 'collapsed' }).enabled, false);
+});
+
+test('isPrivateAddress blocks loopback, private, link-local and unique-local ranges', () => {
+  for (const address of ['127.0.0.1', '10.2.3.4', '172.16.2.3', '192.168.1.9', '169.254.1.1', '::1', 'fc00::1', 'fe80::1']) {
+    assert.equal(isPrivateAddress(address), true, address);
+  }
+  assert.equal(isPrivateAddress('8.8.8.8'), false);
+  assert.equal(isPrivateAddress('2606:4700:4700::1111'), false);
+});
+
+test('extractPageTitle prefers og:title and decodes HTML entities', () => {
+  const html = '<html><head><title>Fallback</title><meta property="og:title" content="OpenAI &amp; Friends"></head></html>';
+  assert.equal(extractPageTitle(html, 'example.com'), 'OpenAI & Friends');
+  assert.equal(extractPageTitle('<title>  Docs &mdash; Home  </title>', 'example.com'), 'Docs — Home');
+  assert.equal(extractPageTitle('<html></html>', 'example.com'), 'example.com');
+});
+
+test('favicon and smart material metadata are normalized safely', () => {
+  assert.equal(extractFaviconHref('<link rel="icon" href="/assets/icon.png">'), '/assets/icon.png');
+  assert.equal(extractFaviconHref('<link rel="stylesheet" href="app.css">'), '');
+  assert.deepEqual(parseSmartMaterialMetadata('```json\n{"title":" 周会决策与行动项 ","category":"会议"}\n```'), {
+    title: '周会决策与行动项',
+    category: '会议',
+  });
+});
+
+test('transcription settings fall back to the legacy app directory only when current settings are absent', () => {
+  const legacy = { encryptedApiKey: 'legacy-asr', encryptedLlmApiKey: 'legacy-llm' };
+  assert.deepEqual(selectTranscriptionSettings({}, legacy), legacy);
+  assert.deepEqual(selectTranscriptionSettings({ region: 'beijing' }, legacy), { region: 'beijing' });
+  assert.deepEqual(selectTranscriptionSettings(null, null), {});
+});
+
+test('recordingExtension only returns known audio file extensions', () => {
+  assert.equal(recordingExtension('audio/webm;codecs=opus'), 'webm');
+  assert.equal(recordingExtension('audio/mp4'), 'm4a');
+  assert.equal(recordingExtension('audio/ogg'), 'ogg');
+  assert.equal(recordingExtension('application/octet-stream'), 'webm');
+});
+
+test('normalizeWindowRows preserves separate windows and filters empty titles', () => {
+  const rows = normalizeWindowRows([
+    { pid: 10, appName: 'Code', title: 'alpha — Visual Studio Code', windowIndex: 0, appPath: '/Applications/Visual Studio Code.app' },
+    { pid: 10, appName: 'Code', title: 'beta — Visual Studio Code', windowIndex: 1 },
+    { pid: 11, appName: 'Finder', title: '', windowIndex: 0 },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.notEqual(rows[0].id, rows[1].id);
+  assert.equal(rows[0].appPath, '/Applications/Visual Studio Code.app');
+  assert.equal(rows[1].title, 'beta — Visual Studio Code');
+});
+
+test('normalizeWindowRows collapses same-process duplicates of one window title', () => {
+  // 实测：微信只开了一个窗口，CGWindowList 却返回两条同名记录（窗口号 53696 与 85），
+  // 界面上就成了两个「微信」。聚焦按标题匹配，重复条目指向同一个窗口，必须只留最前那条。
+  const rows = normalizeWindowRows([
+    { pid: 650, appName: '微信', title: '微信', windowNumber: 53696, appPath: '/Applications/微信.app' },
+    { pid: 650, appName: '微信', title: '微信', windowNumber: 85, appPath: '/Applications/微信.app' },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'window-650-53696');
+
+  // 同应用的不同窗口（标题不同）必须全部保留，多工作区的 VS Code 不能被误删。
+  const editors = normalizeWindowRows([
+    { pid: 26497, appName: 'Code', title: '灵动岛', windowNumber: 1, appPath: '/Applications/Visual Studio Code.app' },
+    { pid: 26497, appName: 'Code', title: 'Vlog制作工坊', windowNumber: 2, appPath: '/Applications/Visual Studio Code.app' },
+  ]);
+  assert.equal(editors.length, 2);
+
+  // 同名窗口分属不同进程时是两个真实应用，不能合并。
+  const distinct = normalizeWindowRows([
+    { pid: 1, appName: '备忘录', title: '备忘录', windowNumber: 10 },
+    { pid: 2, appName: '备忘录', title: '备忘录', windowNumber: 11 },
+  ]);
+  assert.equal(distinct.length, 2);
+});
+
+test('normalizeWindowRows keeps all named CGWindow entries with stable window ids', () => {
+  const rows = normalizeWindowRows([
+    { pid: 10, appName: 'Code', title: '灵动岛', windowNumber: 501, appPath: '/Applications/Visual Studio Code.app' },
+    { pid: 10, appName: 'Code', title: 'Lollipop-Test', windowNumber: 502, appPath: '/Applications/Visual Studio Code.app' },
+    { pid: 10, appName: 'Code', title: 'AI PM 备课坊', windowNumber: 503, appPath: '/Applications/Visual Studio Code.app' },
+    { pid: 10, appName: 'Code', title: '', windowNumber: 504, appPath: '/Applications/Visual Studio Code.app' },
+  ]);
+  assert.deepEqual(rows.map((row) => row.id), [
+    'window-10-501',
+    'window-10-502',
+    'window-10-503',
+  ]);
+});
+
+test('todoReminderState fires once within the final hour and expires after the DDL', () => {
+  const deadline = Date.parse('2026-08-22T10:00:00.000Z');
+  const todo = { id: 't1', text: '发布新版', deadline: new Date(deadline).toISOString(), done: false, remindedAt: 0 };
+  assert.deepEqual(todoReminderState(todo, deadline - 2 * 60 * 60 * 1000), {
+    state: 'scheduled',
+    delayMs: 60 * 60 * 1000,
+  });
+  assert.deepEqual(todoReminderState(todo, deadline - 30 * 60 * 1000), {
+    state: 'due',
+    delayMs: 0,
+  });
+  assert.equal(todoReminderState({ ...todo, remindedAt: deadline - 60 * 60 * 1000 }, deadline - 30 * 60 * 1000).state, 'notified');
+  assert.equal(todoReminderState(todo, deadline + 1).state, 'expired');
+});
+
+test('todo reminder timers checkpoint far-future deadlines without overflowing Node timers', () => {
+  const maximumNodeTimerDelay = (2 ** 31) - 1;
+  assert.equal(todoReminderTimerDelay(0), 250);
+  assert.equal(todoReminderTimerDelay(60 * 60 * 1000), 60 * 60 * 1000);
+  assert.equal(todoReminderTimerDelay(maximumNodeTimerDelay + 1), maximumNodeTimerDelay);
+  assert.equal(todoReminderTimerDelay(2672140134), maximumNodeTimerDelay);
+});
+
+test('task notification identifies the repository and concrete finished work', () => {
+  assert.deepEqual(taskNotificationIdentity({
+    title: '新的任务已经完成',
+    cwd: '/Users/ahai/Documents/灵动岛',
+    'last-assistant-message': '已完成 VS Code 工作区名称识别，并修复拖拽残留。\n测试已通过。',
+  }, 'codex'), {
+    project: '灵动岛',
+    title: '已完成 VS Code 工作区名称识别，并修复拖拽残留。',
+  });
+  assert.deepEqual(taskNotificationIdentity({
+    project: 'CourseKit',
+    task_title: '生成课程大纲',
+  }, 'gpt'), {
+    project: 'CourseKit',
+    title: '生成课程大纲',
+  });
+  assert.deepEqual(taskNotificationIdentity({
+    cwd: '/Users/ahai/Documents/灵动岛',
+    last_assistant_message: '## 已接好 Claude Code 的 Stop 钩子\n测试全部通过。',
+  }, 'claude'), {
+    project: '灵动岛',
+    title: '已接好 Claude Code 的 Stop 钩子',
+  });
+  // 记录文件还没落盘时标题为空，各来源要退回自己的兜底文案。
+  assert.equal(taskNotificationIdentity({ cwd: '/tmp/demo' }, 'claude').title, 'Claude 已完成任务');
+  assert.equal(taskNotificationIdentity({ cwd: '/tmp/demo' }, 'codex').title, 'Codex 已完成任务');
+  assert.equal(taskNotificationIdentity({ cwd: '/tmp/demo' }, 'todo').title, '任务已完成');
+});
+
+test('credential input trims metadata but preserves password bytes and rejects incomplete records', () => {
+  assert.deepEqual(normalizeCredentialInput({
+    service: '  GitHub  ',
+    account: '  user@example.com  ',
+    password: '  p@ss word  ',
+  }, 'cred-1', 100), {
+    id: 'cred-1',
+    service: 'GitHub',
+    account: 'user@example.com',
+    password: '  p@ss word  ',
+    createdAt: 100,
+  });
+  assert.equal(normalizeCredentialInput({ service: '', account: 'a', password: 'b' }), null);
+  assert.equal(normalizeCredentialInput({ service: 'A', account: '', password: 'b' }), null);
+  assert.equal(normalizeCredentialInput({ service: 'A', account: 'a', password: '' }), null);
+});
+
+test('smart link metadata accepts fenced JSON but restricts category and title lengths', () => {
+  assert.deepEqual(parseSmartLinkMetadata('```json\n{"title":"OpenAI API 文档","category":"开发"}\n```'), {
+    title: 'OpenAI API 文档',
+    category: '开发',
+  });
+  assert.deepEqual(parseSmartLinkMetadata('{"title":"  ","category":"一个非常非常非常非常非常非常长的分类名称"}'), {
+    title: '',
+    category: '一个非常非常非常非常非常非常',
+  });
+  assert.equal(parseSmartLinkMetadata('not-json'), null);
+});
+
+test('clipboard polling follows the feature switch and never reserves a global shortcut', () => {
+  // 剪贴板默认关闭，关着就不能轮询系统剪贴板：原实现恒返回 recordHistory: true，
+  // 于是主进程无论开关状态都在每 500ms 读一次粘贴板，粘贴板里有大图时空转吃掉三成 CPU。
+  assert.deepEqual(clipboardServicePolicy({ clip: true }), {
+    recordHistory: true,
+    registerGlobalShortcut: false,
+  });
+  assert.deepEqual(clipboardServicePolicy({ clip: false }), {
+    recordHistory: false,
+    registerGlobalShortcut: false,
+  });
+  // 缺字段或传入非对象时一律按「关闭」处理，不能默默恢复轮询。
+  assert.equal(clipboardServicePolicy({}).recordHistory, false);
+  assert.equal(clipboardServicePolicy(undefined).recordHistory, false);
+  assert.equal(clipboardServicePolicy(true).recordHistory, false);
+  // 全局快捷键在任何情况下都不注册（原 Cmd+Shift+V 已撤销）。
+  for (const input of [{ clip: true }, { clip: false }, {}, undefined]) {
+    assert.equal(clipboardServicePolicy(input).registerGlobalShortcut, false);
+  }
+});
+
+test('enabling clipboard history baselines existing text and image without recording either', () => {
+  const result = reduceClipboardObservation(
+    {},
+    { text: '开启前已复制的文字', imageFingerprint: 'image-before-enable' },
+    { baseline: true }
+  );
+
+  assert.deepEqual(result, {
+    state: {
+      textFingerprint: '开启前已复制的文字',
+      imageFingerprint: 'image-before-enable',
+    },
+    record: null,
+  });
+});
+
+test('text observations do not forget the last image fingerprint', () => {
+  const firstImage = reduceClipboardObservation(
+    {},
+    { text: '', imageFingerprint: 'same-image' }
+  );
+  const text = reduceClipboardObservation(
+    firstImage.state,
+    { text: '中间的文字', imageFingerprint: null }
+  );
+  const repeatedImage = reduceClipboardObservation(
+    text.state,
+    { text: '', imageFingerprint: 'same-image' }
+  );
+
+  assert.equal(firstImage.record.type, 'image');
+  assert.equal(text.record.type, 'text');
+  assert.equal(text.state.imageFingerprint, 'same-image');
+  assert.equal(repeatedImage.record, null);
+});
+
+test('clipboard image fingerprints distinguish different PNG bytes of the same size', () => {
+  const first = createClipboardImageFingerprint(64, 64, Buffer.from([1, 2, 3, 4]));
+  const second = createClipboardImageFingerprint(64, 64, Buffer.from([4, 3, 2, 1]));
+
+  assert.notEqual(first, second);
+  assert.equal(first, createClipboardImageFingerprint(64, 64, Buffer.from([1, 2, 3, 4])));
+});
+
+test('local Electron windows deny renderer navigation and child windows', () => {
+  let windowOpenHandler = null;
+  let navigationHandler = null;
+  const webContents = {
+    getURL() { return 'file:///app/renderer/index.html'; },
+    setWindowOpenHandler(handler) { windowOpenHandler = handler; },
+    on(eventName, handler) {
+      if (eventName === 'will-navigate') navigationHandler = handler;
+    },
+  };
+
+  assert.equal(installLocalWebContentsGuards(webContents), true);
+  assert.deepEqual(windowOpenHandler({ url: 'https://example.com' }), { action: 'deny' });
+  let prevented = false;
+  navigationHandler({ preventDefault() { prevented = true; } }, 'https://example.com');
+  assert.equal(prevented, true);
+  for (const url of ['file:///app/renderer/other.html', 'file:///app/renderer/index.html?other', 'https://example.com']) {
+    let denied = false;
+    navigationHandler({ preventDefault() { denied = true; } }, url);
+    assert.equal(denied, true, `Navigation must remain denied: ${url}`);
+  }
+  let reloadDenied = false;
+  navigationHandler({ preventDefault() { reloadDenied = true; } }, 'file:///app/renderer/index.html');
+  assert.equal(reloadDenied, false, 'Portable workspace recovery may reload only the exact current local page');
+});
+
+test('native file pickers stay attached to the panel and always release the transient guard', async () => {
+  const owner = { id: 'main-window' };
+  const options = { properties: ['openFile'] };
+  const guardDeltas = [];
+  let receivedArgs = null;
+  const result = await runOwnedOpenDialog(
+    async (...args) => {
+      receivedArgs = args;
+      return { canceled: false, filePaths: ['/tmp/example.png'] };
+    },
+    owner,
+    options,
+    (delta) => guardDeltas.push(delta)
+  );
+
+  assert.deepEqual(receivedArgs, [owner, options]);
+  assert.deepEqual(guardDeltas, [1, -1]);
+  assert.equal(result.canceled, false);
+
+  const failureDeltas = [];
+  await assert.rejects(() => runOwnedOpenDialog(
+    async () => { throw new Error('dialog failed'); },
+    owner,
+    options,
+    (delta) => failureDeltas.push(delta)
+  ));
+  assert.deepEqual(failureDeltas, [1, -1]);
+});
+
+test('Electron 44 clipboard items preserve concealed content and lazily decode images', async () => {
+  let imageReads = 0;
+  const items = [{
+    types: [
+      'text/plain',
+      'image/png',
+      'electron application/osclipboard;format="org.nspasteboard.ConcealedType"',
+    ],
+    async getType(type) {
+      if (type === 'image/png') imageReads += 1;
+      if (type === 'text/plain') return new Blob(['secret']);
+      return new Blob([Buffer.from([1, 2, 3])], { type });
+    },
+  }];
+
+  assert.deepEqual(await readClipboardObservation(items, { includeImage: true }), {
+    concealed: true,
+    text: '',
+    image: null,
+  });
+  assert.equal(imageReads, 0, '敏感剪贴板不得解码图片内容');
+});
+
+test('Electron 44 clipboard items decode text first and only read image bytes when requested', async () => {
+  let imageReads = 0;
+  const items = [{
+    types: ['text/plain', 'image/png'],
+    async getType(type) {
+      if (type === 'text/plain') return new Blob(['hello']);
+      imageReads += 1;
+      return new Blob([Buffer.from([4, 5, 6])], { type: 'image/png' });
+    },
+  }];
+
+  const textOnly = await readClipboardObservation(items, { includeImage: false });
+  assert.deepEqual(textOnly, { concealed: false, text: 'hello', image: null });
+  assert.equal(imageReads, 0);
+
+  const withImage = await readClipboardObservation(items, { includeImage: true });
+  assert.equal(withImage.text, 'hello');
+  assert.equal(withImage.image.mimeType, 'image/png');
+  assert.deepEqual(withImage.image.buffer, Buffer.from([4, 5, 6]));
+  assert.equal(imageReads, 1);
+});
+
+test('screen-recording startup checks never touch capture APIs before user consent', () => {
+  assert.deepEqual(screenRecordingProbePolicy('not-determined'), {
+    hasAccess: false,
+    inspectWindowTitles: false,
+  });
+  assert.deepEqual(screenRecordingProbePolicy('denied'), {
+    hasAccess: false,
+    inspectWindowTitles: false,
+  });
+  assert.deepEqual(screenRecordingProbePolicy('granted'), {
+    hasAccess: true,
+    inspectWindowTitles: true,
+  });
+  assert.deepEqual(screenRecordingProbePolicy('unknown'), {
+    hasAccess: true,
+    inspectWindowTitles: false,
+  });
+});
+
+test('hidden task notification renderer is disposed after its queue drains', () => {
+  assert.equal(taskNotificationWindowPolicy({ active: true, queueLength: 0 }), 'retain');
+  assert.equal(taskNotificationWindowPolicy({ active: false, queueLength: 1 }), 'retain');
+  assert.equal(taskNotificationWindowPolicy({ active: false, queueLength: 0 }), 'dispose');
+});
+
+test('unchanged PNG clipboard probes reuse source bytes without re-encoding', () => {
+  const png = Buffer.from([137, 80, 78, 71, 1, 2, 3]);
+  const prepared = prepareClipboardImagePayload('image/png', png, { width: 4096, height: 4096 });
+
+  assert.equal(prepared.pngBuffer, png);
+  assert.equal(prepared.sourceBuffer, png);
+  assert.match(prepared.fingerprint, /^4096x4096:[a-f0-9]{64}$/);
+
+  const jpeg = Buffer.from([255, 216, 255, 1, 2, 3]);
+  assert.equal(
+    prepareClipboardImagePayload('image/jpeg', jpeg, { width: 100, height: 100 }).pngBuffer,
+    null
+  );
+});
+
+test('feature preferences only update configurable tabs and keep permanent tabs enabled', () => {
+  assert.equal(typeof updateFeaturePreference, 'function', 'updateFeaturePreference must exist');
+  assert.deepEqual(updateFeaturePreference({ todo: true, clip: false }, 'clip', true), {
+    todo: true,
+    clip: true,
+    home: true,
+  });
+  assert.equal(updateFeaturePreference({ todo: true }, 'home', false), null);
+  assert.equal(updateFeaturePreference({ todo: true }, 'settings', false), null);
+  assert.equal(updateFeaturePreference({ todo: true }, 'unknown', false), null);
+  assert.equal(updateFeaturePreference({ todo: true }, 'todo', 'false'), null);
+});
+
+test('default panel tab accepts visible tabs and falls back to home safely', () => {
+  const features = { todo: true, notes: false, clip: false };
+  assert.equal(normalizeDefaultTabPreference('todo', features), 'todo');
+  assert.equal(normalizeDefaultTabPreference('settings', features), 'settings');
+  assert.equal(normalizeDefaultTabPreference('notes', features), 'home');
+  assert.equal(normalizeDefaultTabPreference('unknown', features), 'home');
+  assert.deepEqual(updateDefaultTabPreference({ features, shortcut: 'Space' }, 'todo'), {
+    features,
+    shortcut: 'Space',
+    defaultTab: 'todo',
+  });
+  assert.equal(updateDefaultTabPreference({ features }, 'notes'), null);
+});
+
+test('first music-app play launches the client and starts its restored song', async () => {
+  const events = [];
+  let running = false;
+  const result = await controlMusicApp('play', {
+    isRunning: async () => {
+      events.push('running');
+      return running;
+    },
+    launch: async () => {
+      events.push('launch');
+      running = true;
+      return true;
+    },
+    sendShortcut: async (action) => {
+      events.push(`shortcut:${action}`);
+      return { ok: true };
+    },
+    sleep: async () => {},
+  });
+
+  assert.deepEqual(events, ['running', 'launch', 'running', 'shortcut:play']);
+  assert.equal(result.ok, true);
+  assert.equal(result.running, true);
+  assert.equal(result.playing, true);
+  assert.equal(result.bootstrapped, true);
+});
+
+test('a running music client uses its own shortcuts because native media status can stay empty', async () => {
+  const events = [];
+  const result = await controlMusicApp('play', {
+    isRunning: async () => true,
+    launch: async () => {
+      events.push('launch');
+      return true;
+    },
+    sendShortcut: async (action) => {
+      events.push(`shortcut:${action}`);
+      return { ok: true };
+    },
+    sleep: async () => {},
+  });
+
+  assert.deepEqual(events, ['shortcut:play']);
+  assert.equal(result.ok, true);
+  assert.equal(result.playing, true);
+  assert.equal(result.bootstrapped, false);
+});
+
+test('music-app pause and track navigation preserve explicit playback state', async () => {
+  const shortcuts = [];
+  const dependencies = {
+    isRunning: async () => true,
+    launch: async () => true,
+    sendShortcut: async (action) => {
+      shortcuts.push(action);
+      return { ok: true };
+    },
+    sleep: async () => {},
+  };
+
+  assert.equal((await controlMusicApp('pause', dependencies)).playing, false);
+  assert.equal((await controlMusicApp('next', dependencies, false)).playing, true);
+  assert.equal((await controlMusicApp('previous', dependencies, false)).playing, true);
+  assert.deepEqual(shortcuts, ['pause', 'next', 'previous']);
+});
+
+test('music-app play uses the play/pause toggle instead of the next-track key', () => {
+  // play 曾经和 next 撞成同一个键（Cmd+Right），点播放实际是切歌、歌不会开始播。
+  // Space 是播放/暂停切换键，play 与 pause 共用它，next / previous 必须与之不同。
+  assert.deepEqual(musicShortcutSpec('play'), { keyCode: 49, command: false, dismissOverlays: true });
+  assert.deepEqual(musicShortcutSpec('pause'), { keyCode: 49, command: false, dismissOverlays: true });
+  assert.deepEqual(musicShortcutSpec('next'), { keyCode: 124, command: true, dismissOverlays: true });
+  assert.deepEqual(musicShortcutSpec('previous'), { keyCode: 123, command: true, dismissOverlays: true });
+  assert.notDeepEqual(musicShortcutSpec('play'), musicShortcutSpec('next'));
+  assert.equal(musicShortcutSpec('invalid'), null);
+});
+
+/* ==================== 照片生成换肤 ==================== */
+
+function classicPalette(overrides = {}) {
+  return {
+    bg: '#000000',
+    surface1: '#111111',
+    surface2: '#191919',
+    surface3: '#252525',
+    hairline: 'rgba(255,255,255,0.08)',
+    hairlineSoft: 'rgba(255,255,255,0.06)',
+    highlightTop: 'rgba(255,255,255,0.07)',
+    squircleHighlight: 'rgba(255,255,255,0.16)',
+    text1: '#F5F5F5',
+    text2: '#A1A1A1',
+    text3: '#707070',
+    text4: '#4A4A4A',
+    accent: '#6EA8FF',
+    scrollThumb: 'rgba(255,255,255,0.08)',
+    scrollThumbHover: 'rgba(255,255,255,0.20)',
+    tooltipBg: 'rgba(0,0,0,0.92)',
+    itemHover: 'rgba(255,255,255,0.04)',
+    panelShadow: 'rgba(0,0,0,0.42)',
+    ...overrides,
+  };
+}
+
+test('theme palette comes from the renderer and is treated as untrusted input', () => {
+  assert.ok(normalizeThemePalette(classicPalette()));
+
+  // 缺键、非法颜色值、非对象一律整体拒绝——绝不半信半疑地注入 CSS。
+  const missing = classicPalette();
+  delete missing.accent;
+  assert.equal(normalizeThemePalette(missing), null);
+  assert.equal(normalizeThemePalette(classicPalette({ bg: 'javascript:alert(1)' })), null);
+  assert.equal(normalizeThemePalette(classicPalette({ bg: '' })), null);
+  assert.equal(normalizeThemePalette(classicPalette({ text1: 0 })), null);
+  assert.equal(normalizeThemePalette(null), null);
+  assert.equal(normalizeThemePalette([classicPalette()]), null);
+
+  // 多余键不影响，但不会进入结果。
+  const extra = normalizeThemePalette(classicPalette({ bogus: '#ffffff' }));
+  assert.ok(extra);
+  assert.equal(Object.prototype.hasOwnProperty.call(extra, 'bogus'), false);
+  assert.deepEqual(Object.keys(extra).sort(), Object.keys(classicPalette()).sort());
+});
+
+test('photo theme without a usable palette falls back to classic instead of half-applying', () => {
+  assert.deepEqual(normalizeThemeSettings('photo', null), { theme: 'classic', palette: null });
+  assert.deepEqual(normalizeThemeSettings('photo', { bg: '#000' }), { theme: 'classic', palette: null });
+
+  const applied = normalizeThemeSettings('photo', classicPalette({ bg: '#101418' }));
+  assert.equal(applied.theme, 'photo');
+  assert.equal(applied.palette.bg, '#101418');
+
+  // 经典黑不保留调色板：避免残留的色板在下次切回照片主题时被误用。
+  assert.deepEqual(normalizeThemeSettings('classic', classicPalette()), { theme: 'classic', palette: null });
+  assert.equal(normalizeThemePreference('nonsense'), 'classic');
+  assert.equal(normalizeThemePreference('photo'), 'photo');
+});
+
+/* ==================== 桌宠 ==================== */
+
+test('pet settings default to enabled with a medium size and reject unknown sizes', () => {
+  assert.deepEqual(normalizePetSettings(null), { enabled: true, size: 'medium' });
+  assert.deepEqual(normalizePetSettings({}), { enabled: true, size: 'medium' });
+  assert.deepEqual(normalizePetSettings({ enabled: false, size: 'huge' }), { enabled: false, size: 'medium' });
+  assert.deepEqual(normalizePetSettings({ enabled: 'no', size: 'large' }), { enabled: true, size: 'large' });
+});
+
+test('pet motion is normalized into a unit box with a valid facing', () => {
+  assert.deepEqual(normalizePetMotion({ x: 0.25, y: 0.75, facing: -1 }), { x: 0.25, y: 0.75, facing: -1 });
+  assert.deepEqual(normalizePetMotion({ x: 9, y: -9, facing: 0 }), { x: 1, y: 0, facing: 1 });
+  assert.deepEqual(normalizePetMotion({ x: 'nope', y: NaN }), { x: 0.5, y: 0.12, facing: 1 });
+});
+
+test('pet memory keeps the newest conversations and long-term entries within its caps', () => {
+  const conversations = Array.from({ length: 240 }, (unused, index) => ({
+    id: `c${index}`,
+    role: index % 2 === 0 ? 'user' : 'assistant',
+    content: `message ${index}`,
+    ts: index,
+  }));
+  const longTerm = Array.from({ length: 80 }, (unused, index) => ({
+    id: `m${index}`,
+    content: `memory ${index}`,
+    ts: index,
+  }));
+
+  const memory = truncatePetMemory({ conversations, longTerm });
+  assert.equal(memory.conversations.length, 200);
+  assert.equal(memory.longTerm.length, 50);
+  // 淘汰最老、保留最新：最后一条必须还在，第一条必须已经出局。
+  assert.equal(memory.conversations[memory.conversations.length - 1].content, 'message 239');
+  assert.equal(memory.longTerm[memory.longTerm.length - 1].content, 'memory 79');
+  assert.equal(memory.longTerm.some((entry) => entry.content === 'memory 0'), false);
+
+  // 空内容条目被丢弃，非法输入退化成空记忆而不是抛错。
+  assert.deepEqual(truncatePetMemory({ conversations: [{ content: '   ' }] }), { conversations: [], longTerm: [] });
+  assert.deepEqual(truncatePetMemory(null), { conversations: [], longTerm: [] });
+});
+
+test('appending a conversation keeps role, order and the cap', () => {
+  let memory = truncatePetMemory(null);
+  memory = appendPetConversation(memory, 'user', '你好', { id: 'a', ts: 1 });
+  memory = appendPetConversation(memory, 'assistant', '你好呀', { id: 'b', ts: 2 });
+  memory = appendPetConversation(memory, 'user', '   ', { id: 'c', ts: 3 });
+
+  assert.deepEqual(memory.conversations.map((entry) => entry.role), ['user', 'assistant']);
+  assert.deepEqual(memory.conversations.map((entry) => entry.content), ['你好', '你好呀']);
+});
+
+test('pet chat messages carry persona, long-term memory and only the recent window', () => {
+  const conversations = Array.from({ length: 30 }, (unused, index) => ({
+    id: `c${index}`,
+    role: index % 2 === 0 ? 'user' : 'assistant',
+    content: `turn ${index}`,
+    ts: index,
+  }));
+  const memory = truncatePetMemory({
+    conversations,
+    longTerm: [{ id: 'm1', content: '主人习惯晚上写代码', ts: 1 }],
+  });
+
+  const messages = buildPetChatMessages(memory, '今天写什么好', { persona: '你是一只猫' });
+  assert.equal(messages[0].role, 'system');
+  assert.match(messages[0].content, /你是一只猫/);
+  assert.match(messages[0].content, /主人习惯晚上写代码/);
+
+  const tail = messages[messages.length - 1];
+  assert.deepEqual(tail, { role: 'user', content: '今天写什么好' });
+
+  // 只带最近 12 条上下文，最老的 turn 0 不应该出现。
+  const contextContents = messages.slice(1, -1).map((entry) => entry.content);
+  assert.equal(contextContents.length, 12);
+  assert.equal(contextContents.includes('turn 0'), false);
+  assert.equal(contextContents[contextContents.length - 1], 'turn 29');
+});
+
+test('pet chat messages fall back to a default persona and skip an empty question', () => {
+  const messages = buildPetChatMessages(truncatePetMemory(null), '   ');
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].role, 'system');
+  assert.match(messages[0].content, /桌宠/);
+});

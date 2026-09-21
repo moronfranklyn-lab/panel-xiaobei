@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TO-DO Panel 桌宠</title>
+    <link rel="stylesheet" href="./pet.css" />
+  </head>
+  <body>
+    <!-- 整屏透明覆盖层：未交互区域一律 pointer-events: none，鼠标穿透交还桌面 -->
+    <div id="pet-root" class="pet-root" data-theme="classic" hidden>
+      <div id="pet-stage" class="pet-stage" data-state="idle">
+        <button
+          id="pet-body"
+          class="pet-body"
+          type="button"
+          aria-label="桌宠，单击对话，双击打开宠物面板"
+        >
+          <img
+            id="pet-sprite-ghost"
+            class="pet-sprite pet-sprite-ghost"
+            alt=""
+            draggable="false"
+            aria-hidden="true"
+          />
+          <img
+            id="pet-sprite-img"
+            class="pet-sprite pet-sprite-current"
+            alt=""
+            draggable="false"
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+
+      <div id="pet-bubble-layer" class="pet-bubble-layer" hidden></div>
+      <div id="pet-toast-layer" class="pet-toast-layer" hidden></div>
+    </div>
+
+    <template id="pet-bubble-template">
+      <div class="pet-bubble" data-mode="ask" data-side="right">
+        <span class="pet-bubble-arrow" aria-hidden="true"></span>
+        <div class="pet-bubble-inner">
+          <p class="pet-bubble-label" data-role="hint"></p>
+          <p class="pet-bubble-text" data-role="text" hidden></p>
+          <div class="pet-bubble-actions" data-role="actions" hidden>
+            <button class="pet-bubble-btn" data-role="settings" type="button">
+              <svg
+                class="pet-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <circle cx="12" cy="12" r="3.1" />
+                <path
+                  d="M12 3.6v2.1M12 18.3v2.1M4.7 4.7l1.5 1.5M17.8 17.8l1.5 1.5M3.6 12h2.1M18.3 12h2.1M4.7 19.3l1.5-1.5M17.8 6.2l1.5-1.5"
+                />
+              </svg>
+              <span>去设置</span>
+            </button>
+            <button class="pet-bubble-btn" data-role="panel" type="button">
+              <svg
+                class="pet-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M5.5 5.5h13v13h-13z" />
+                <path d="M9.5 9.5h5M9.5 13.5h3.5" />
+              </svg>
+              <span>历史</span>
+            </button>
+          </div>
+          <form class="pet-bubble-form" data-role="form">
+            <label class="pet-visually-hidden" for="pet-input">对桌宠说点什么</label>
+            <input
+              id="pet-input"
+              class="pet-bubble-input"
+              data-role="input"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="问点什么…"
+            />
+            <button
+              class="pet-bubble-send"
+              data-role="send"
+              type="submit"
+              aria-label="发送"
+            >
+              <svg
+                class="pet-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.9"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M12 19V6" />
+                <path d="M6.5 11.2 12 5.6l5.5 5.6" />
+              </svg>
+            </button>
+          </form>
+        </div>
+      </div>
+    </template>
+
+    <template id="pet-toast-template">
+      <div class="pet-toast" data-kind="task">
+        <span class="pet-toast-arrow" aria-hidden="true"></span>
+        <div class="pet-toast-inner">
+          <span class="pet-toast-glyph" aria-hidden="true">
+            <svg
+              class="pet-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="m6.5 12.5 3.5 3.5 7.5-8" />
+            </svg>
+            <svg
+              class="pet-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M12 3.5c.7 4 2.8 6.1 6.8 6.8-4 .7-6.1 2.8-6.8 6.8-.7-4-2.8-6.1-6.8-6.8 4-.7 6.1-2.8 6.8-6.8Z"
+              />
+            </svg>
+            <svg
+              class="pet-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <circle cx="12" cy="12" r="7.5" />
+              <path d="M12 7.8v4.7l3.2 1.8" />
+            </svg>
+          </span>
+          <span class="pet-toast-copy">
+            <span class="pet-toast-title" data-role="title"></span>
+            <span class="pet-toast-body" data-role="body"></span>
+          </span>
+        </div>
+      </div>
+    </template>
+
+    <script src="./pet-motion.js" defer></script>
+    <script src="./pet.js" defer></script>
+  </body>
+</html>
