@@ -58,12 +58,12 @@ TO-DO Panel 是一个常驻 macOS / Windows 屏幕顶部的本地工作台。Mac
 
 ## 下载与安装
 
-> 当前稳定版本：**1.1.2** · **macOS 13.0+ Apple Silicon** / **Windows 10/11 x64（Intel / AMD 64 位）**
+> 当前稳定版本：**1.2.0** · **macOS 13.0+ Apple Silicon** / **Windows 10/11 x64（Intel / AMD 64 位）**
 
 | 平台 | 在上方 GitHub Releases 下载对应安装包 |
 | --- | --- |
-| Mac | [TO-DO-Panel-1.1.2-arm64.dmg](https://github.com/moronfranklyn-lab/panel-xiaobei/releases/download/v1.1.2/TO-DO-Panel-1.1.2-arm64.dmg) |
-| Windows | [TO-DO-Panel-1.1.2-windows-x64-setup.exe](https://github.com/moronfranklyn-lab/panel-xiaobei/releases/download/v1.1.2/TO-DO-Panel-1.1.2-windows-x64-setup.exe) |
+| Mac | [TO-DO-Panel-1.2.0-arm64.dmg](https://github.com/moronfranklyn-lab/panel-xiaobei/releases/download/v1.2.0/TO-DO-Panel-1.2.0-arm64.dmg) |
+| Windows | [TO-DO-Panel-1.2.0-windows-x64-setup.exe](https://github.com/moronfranklyn-lab/panel-xiaobei/releases/download/v1.2.0/TO-DO-Panel-1.2.0-windows-x64-setup.exe) |
 
 ### macOS
 
